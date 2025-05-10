@@ -1,32 +1,28 @@
 import { physics } from "propel-js"
 import { PlayerId } from "rune-sdk"
+import { destroyJointsOfBodies } from "./utils/physicsUtils"
 
 const MAX_VELOCITY: number = 10000
-const CAR_ACCEL: number = 1000
-const CAR_TILT: number = 2
+const CAR_ACCEL: number = 5000
 
 export type CarIds = {
-  chassis: number
-  leftSensor: number
-  rightSensor: number
-  circle1: number
-  circle2: number
+  body: number
 }
 
 export type WorldIds = Record<PlayerId, CarIds>
 
 // jointed car
 export function worldInit(): { world: physics.World; ids: WorldIds } {
-  const world = physics.createWorld({ x: 0, y: 100 })
+  const world = physics.createWorld({ x: 0, y: 0 })
   world.damp = 0.99
-  world.angularDamp = 0.95
+  world.angularDamp = 0.99
   const friction = 1
 
   const rect = physics.createRectangle(
     world,
     { x: 250, y: 458 },
     400,
-    30,
+    50,
     0,
     friction,
     0
@@ -37,7 +33,7 @@ export function worldInit(): { world: physics.World; ids: WorldIds } {
       world,
       { x: 250 + i * 390, y: 420 },
       400,
-      30,
+      50,
       0,
       friction,
       0
@@ -52,174 +48,119 @@ export function worldInit(): { world: physics.World; ids: WorldIds } {
   }
 }
 
-export function carInteractiveInit(world: physics.World): CarIds {
-  const friction = 1
+export function playerInteractiveInit(
+  world: physics.World,
+  startX: number
+): CarIds {
+  const base = physics.createCircleShape(world, { x: 0, y: 0 }, 30)
+  const body = physics.createRigidBody(world, { x: 0, y: 0 }, 1, 1, 0, [
+    base,
+  ]) as physics.DynamicRigidBody
 
-  const circle1 = physics.createCircle(
-    world,
-    { x: 150, y: 0 },
-    15,
-    3,
-    friction,
-    0
-  ) as physics.DynamicRigidBody
-  physics.addBody(world, circle1)
-  const circle2 = physics.createCircle(
-    world,
-    { x: 190, y: 0 },
-    15,
-    3,
-    friction,
-    0
-  ) as physics.DynamicRigidBody
-  physics.addBody(world, circle2)
-
-  const leftAnchor = physics.createCircleShape(world, { x: 150, y: 0 }, 3)
-  const rightAnchor = physics.createCircleShape(world, { x: 190, y: 0 }, 3)
-
-  // give them a bit of padding to consume the resolution of wheels against floor
-  const leftSensor = physics.createCircleShape(
-    world,
-    { x: 150, y: 0 },
-    16.5,
-    true
-  )
-  const rightSensor = physics.createCircleShape(
-    world,
-    { x: 190, y: 0 },
-    16.5,
-    true
-  )
-
-  const base = physics.createRectangleShape(
-    world,
-    { x: 170, y: -25 },
-    60,
-    20,
-    0
-  )
-  const chassis = physics.createRigidBody(
-    world,
-    { x: 170, y: 10 },
-    1,
-    friction,
-    0,
-    [base, leftAnchor, rightAnchor, leftSensor, rightSensor]
-  ) as physics.DynamicRigidBody
-
-  physics.addBody(world, chassis)
-  physics.excludeCollisions(world, chassis, circle1)
-  physics.excludeCollisions(world, chassis, circle2)
-  physics.createJoint(world, circle1, leftSensor, 1, 0)
-  physics.createJoint(world, circle2, rightSensor, 1, 0)
+  physics.addBody(world, body)
+  physics.moveBody(body, { x: startX, y: 0 })
 
   return {
-    chassis: chassis.id,
-    leftSensor: leftSensor.id,
-    rightSensor: rightSensor.id,
-    circle1: circle1.id,
-    circle2: circle2.id,
+    body: body.id,
   }
 }
 
-export function carInteractiveUpdate(
+export function fireProjectile(
+  world: physics.World,
+  startX: number,
+  startY: number,
+  vecX: number,
+  vecY: number
+) {
+  const base = physics.createCircleShape(world, { x: 0, y: 0 }, 3)
+  const projectile = physics.createRigidBody(world, { x: 0, y: 0 }, 1, 1, 0, [
+    base,
+  ]) as physics.DynamicRigidBody
+
+  physics.addBody(world, projectile)
+  physics.moveBody(projectile, { x: startX, y: startY })
+  projectile.velocity = { x: vecX, y: vecY }
+  projectile.data = { expiry: world.frameCount + 20 }
+  return projectile
+}
+
+export function playerInteractiveUpdate(
   x: number,
   y: number,
   world: physics.World,
   ids: CarIds
 ) {
-  const chassis = world.dynamicBodies.find((b) => b.id === ids.chassis)
-  if (!chassis) {
-    throw new Error("Can't find chassis body")
+  const body = world.dynamicBodies.find((b) => b.id === ids.body)
+  if (!body) {
+    throw new Error("Can't find body body")
   }
-  const circle1 = world.dynamicBodies.find((b) => b.id === ids.circle1)
-  if (!circle1) {
-    throw new Error("Can't find circle1 body")
-  }
-  const circle2 = world.dynamicBodies.find((b) => b.id === ids.circle2)
-  if (!circle2) {
-    throw new Error("Can't find circle2 body")
-  }
-  const leftSensor = chassis.shapes.find((s) => s.id === ids.leftSensor)
-  if (!leftSensor) {
-    throw new Error("Can't find leftSensor shape")
-  }
-  const rightSensor = chassis.shapes.find((s) => s.id === ids.rightSensor)
-  if (!rightSensor) {
-    throw new Error("Can't find leftSensor shape")
-  }
-
-  const isMidAir = !leftSensor.sensorColliding && !rightSensor.sensorColliding
-
-  chassis.restingTime = 0
-  circle1.restingTime = 0
-  circle2.restingTime = 0
+  body.restingTime = 0
 
   const delta = 1 / 60
 
-  // since we're sure the body is on the ground it ok to drive the chassis forward since it
-  // gives uniform velocity to the wheels
-  if (!isMidAir) {
-    if (x < 0) {
-      chassis.velocity.x = Math.max(
-        -MAX_VELOCITY,
-        chassis.velocity.x - CAR_ACCEL * delta
-      )
-    }
-    if (x > 0) {
-      chassis.velocity.x = Math.min(
-        MAX_VELOCITY,
-        chassis.velocity.x + CAR_ACCEL * delta
-      )
-    }
+  body.velocity.x *= 0.75
+  body.velocity.y *= 0.75
+  body.angularVelocity *= 0.75
+
+  if (x < 0) {
+    body.velocity.x = Math.max(
+      -MAX_VELOCITY,
+      body.velocity.x - CAR_ACCEL * delta
+    )
+  } else if (x > 0) {
+    body.velocity.x = Math.min(
+      MAX_VELOCITY,
+      body.velocity.x + CAR_ACCEL * delta
+    )
   }
 
-  // if we've been off the ground for a bit then allow explicitly tilting the car. Note that
-  // this is totally non-physical so we're giving the player direct control of the car's angle
-  // and want to ignore any other velocity/acceleration on it
-  if (isMidAir) {
-    if (x < 0) {
-      physics.rotateBody(chassis, -CAR_TILT * delta)
-      chassis.angularVelocity = 0
-    }
-    if (x > 0) {
-      physics.rotateBody(chassis, CAR_TILT * delta)
-      chassis.angularVelocity = 0
-    }
+  if (y < 0) {
+    body.velocity.y = Math.max(
+      -MAX_VELOCITY,
+      body.velocity.y + CAR_ACCEL * delta
+    )
+  } else if (y > 0) {
+    body.velocity.y = Math.min(
+      MAX_VELOCITY,
+      body.velocity.y - CAR_ACCEL * delta
+    )
   }
 
-  return chassis
+  if (body.velMag > 0.1 && (x !== 0 || y !== 0)) {
+    const angle = Math.atan2(-y, x)
+    let targetAngle = angle - Math.PI * 0.5
+    const td = targetAngle - body.angle
+    if (td < -Math.PI) {
+      targetAngle += Math.PI * 2
+    } else if (td > Math.PI) {
+      targetAngle -= Math.PI * 2
+    }
+    body.angle -= (body.angle - targetAngle) * delta * 20
+  }
+
+  if (world.frameCount % 2 === 0) {
+    const pa = body.angle + Math.PI * 0.5
+    const vx = Math.cos(pa)
+    const vy = Math.sin(pa)
+    const projectile = fireProjectile(
+      world,
+      body.center.x,
+      body.center.y,
+      vx * 1000,
+      vy * 1000
+    )
+    physics.excludeCollisions(world, body, projectile)
+  }
+
+  return body
 }
 
-export function carInteractiveRemove(world: physics.World, ids: CarIds) {
-  const chassis = world.dynamicBodies.find((b) => b.id === ids.chassis)
-  if (!chassis) {
-    throw new Error("Can't find chassis body")
+export function playerInteractiveRemove(world: physics.World, ids: CarIds) {
+  const body = world.dynamicBodies.find((b) => b.id === ids.body)
+  if (!body) {
+    throw new Error("Can't find body body")
   }
-  const circle1 = world.dynamicBodies.find((b) => b.id === ids.circle1)
-  if (!circle1) {
-    throw new Error("Can't find circle1 body")
-  }
-  const circle2 = world.dynamicBodies.find((b) => b.id === ids.circle2)
-  if (!circle2) {
-    throw new Error("Can't find circle2 body")
-  }
-  physics.removeBody(world, chassis)
-  physics.removeBody(world, circle1)
-  physics.removeBody(world, circle2)
-  const bodies = [chassis.id, circle1.id, circle2.id]
-  const joints = world.joints
-  for (let i = joints.length - 1; i >= 0; i--) {
-    const joint = joints[i]
-    let rem = false
-    for (const body of bodies) {
-      if (joint.bodyA === body || joint.bodyB === body) {
-        rem = true
-        break
-      }
-    }
-    if (rem) {
-      joints.splice(i, 1)
-    }
-  }
+  physics.removeBody(world, body)
+  const bodies = [body.id]
+  destroyJointsOfBodies(world, bodies)
 }

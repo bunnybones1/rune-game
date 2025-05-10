@@ -65,12 +65,22 @@ window.addEventListener("keyup", (e) => {
 })
 
 function updatePointerXY(px: number, py: number) {
-  const isLeft = px < window.innerWidth * 0.5
-  const isUp = py < window.innerHeight * 0.5
-  left = isLeft
-  right = !isLeft
-  up = isUp
-  down = !isUp
+  const minSide = Math.min(window.innerWidth, window.innerHeight)
+  const dx = px - window.innerWidth * 0.5
+  const dy = py - window.innerHeight * 0.5
+  const l = Math.sqrt(dx * dx + dy * dy)
+  if (l < minSide * 0.25) {
+    left = false
+    right = false
+    up = false
+    down = false
+  } else {
+    const cardinal = (Math.round((Math.atan2(dy, dx) / Math.PI) * 4) + 4) % 8
+    left = cardinal === 0 || cardinal === 1 || cardinal === 7
+    right = cardinal === 4 || cardinal === 5 || cardinal === 3
+    up = cardinal === 2 || cardinal === 1 || cardinal === 3
+    down = cardinal === 6 || cardinal === 7 || cardinal === 5
+  }
   updateXY()
 }
 
@@ -124,7 +134,7 @@ function render() {
   ctx.fillRect(0, 0, window.innerWidth, window.innerHeight)
 
   const focusBody = world.dynamicBodies.find(
-    (b) => b.id === ids[playerId!].chassis
+    (b) => b.id === ids[playerId!].body
   )
   if (focusBody) {
     ctx.translate(
