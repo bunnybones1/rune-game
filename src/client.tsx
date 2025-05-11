@@ -69,7 +69,7 @@ function updatePointerXY(px: number, py: number) {
   const dx = px - window.innerWidth * 0.5
   const dy = py - window.innerHeight * 0.5
   const l = Math.sqrt(dx * dx + dy * dy)
-  if (l < minSide * 0.25) {
+  if (l < minSide * 0.15) {
     left = false
     right = false
     up = false
