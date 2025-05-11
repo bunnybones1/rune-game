@@ -3,7 +3,7 @@ import { PlayerId } from "rune-sdk"
 import { destroyJointsOfBodies } from "./utils/physicsUtils"
 
 const MAX_VELOCITY: number = 10000
-const CAR_ACCEL: number = 5000
+const CAR_ACCEL: number = 2000
 
 export type CarIds = {
   body: number
@@ -16,34 +16,6 @@ export function worldInit(): { world: physics.World; ids: WorldIds } {
   const world = physics.createWorld({ x: 0, y: 0 })
   world.damp = 0.99
   world.angularDamp = 0.99
-  // const friction = 1
-
-  // const rect = physics.createRectangle(
-  //   world,
-  //   { x: 250, y: 458 },
-  //   400,
-  //   50,
-  //   0,
-  //   friction,
-  //   0
-  // )
-  // physics.addBody(world, rect)
-  // for (let i = 1; i < 5; i++) {
-  //   const rect = physics.createRectangle(
-  //     world,
-  //     { x: 250 + i * 390, y: 420 },
-  //     400,
-  //     50,
-  //     0,
-  //     friction,
-  //     0
-  //   )
-  //   physics.addBody(world, rect)
-
-  //   physics.rotateBody(rect, i % 2 === 0 ? 0.2 : -0.2)
-  // }
-
-  // dropSeed(world, 40, -320)
   plantTree(world, 40, -320, true)
   return {
     world,
@@ -55,8 +27,17 @@ export function playerInteractiveInit(
   world: physics.World,
   startX: number
 ): CarIds {
-  const base = physics.createCircleShape(world, { x: 0, y: 0 }, 30)
-  const body = physics.createRigidBody(world, { x: 0, y: 0 }, 1, 1, 0, [base])
+  const base = physics.createRectangleShape(world, { x: 0, y: 0 }, 50, 60)
+  const blade = physics.createCircleShape(world, { x: 0, y: 20 }, 30)
+  const body = physics.createRigidBody(
+    world,
+    { x: 0, y: 0 },
+    1,
+    1,
+    0,
+    [base, blade],
+    { targetAngle: 0 }
+  )
 
   physics.addBody(world, body)
   physics.moveBody(body, { x: startX, y: 0 })
@@ -181,35 +162,37 @@ export function playerInteractiveUpdate(
 
   if (body.velMag > 0.1 && (x !== 0 || y !== 0)) {
     const angle = Math.atan2(-y, x)
-    const targetAngle = angle - Math.PI * 0.5
-    let angleDiff = targetAngle - body.angle
-    if (angleDiff < -Math.PI) {
-      angleDiff += Math.PI * 2
-    } else if (angleDiff > Math.PI) {
-      angleDiff -= Math.PI * 2
-    }
-    body.angle -= -angleDiff * delta * 20
-    if (body.angle < -Math.PI) {
-      body.angle += Math.PI * 2
-    } else if (body.angle > Math.PI) {
-      body.angle -= Math.PI * 2
-    }
+    body.data.targetAngle = angle - Math.PI * 0.5
   }
+  let angleDiff = body.data.targetAngle - body.angle
+  if (angleDiff < -Math.PI) {
+    angleDiff += Math.PI * 2
+  } else if (angleDiff > Math.PI) {
+    angleDiff -= Math.PI * 2
+  }
+  let a = body.angle
+  a -= -angleDiff * delta * 20
+  // if (a < -Math.PI) {
+  //   a += Math.PI * 2
+  // } else if (a > Math.PI) {
+  //   a -= Math.PI * 2
+  // }
+  body.angularVelocity = (a - body.angle) * 5
 
-  if (world.frameCount % 2 === 0) {
-    const pa = body.angle + Math.PI * 0.5
-    const vx = Math.cos(pa)
-    const vy = Math.sin(pa)
-    const projectile = fireProjectile(
-      world,
-      body.center.x,
-      body.center.y,
-      vx * 1000,
-      vy * 1000,
-      body.id
-    )
-    physics.excludeCollisions(world, body, projectile)
-  }
+  // if (world.frameCount % 2 === 0) {
+  //   const pa = body.angle + Math.PI * 0.5
+  //   const vx = Math.cos(pa)
+  //   const vy = Math.sin(pa)
+  //   const projectile = fireProjectile(
+  //     world,
+  //     body.center.x,
+  //     body.center.y,
+  //     vx * 1000,
+  //     vy * 1000,
+  //     body.id
+  //   )
+  //   physics.excludeCollisions(world, body, projectile)
+  // }
 
   return body
 }
