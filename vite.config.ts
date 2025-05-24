@@ -3,6 +3,7 @@ import path from "node:path"
 import rune from "rune-sdk/vite"
 import { defineConfig } from "vite"
 import { qrcode } from "vite-plugin-qrcode"
+import tailwindcss from "@tailwindcss/vite";
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -15,5 +16,6 @@ export default defineConfig({
       minifyLogic: false, // This flag can be used if your logic reaches the allowed limit. However, it will make it significantly more difficult to detect validation issues
       ignoredDependencies: ["propel-js"],
     }),
+    tailwindcss(),
   ],
 })
